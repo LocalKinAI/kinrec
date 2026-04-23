@@ -1,0 +1,59 @@
+# golangci-lint v2 config for kinrec.
+# Goal: 0 warnings on the main package.
+
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.22"
+  tests: true
+
+linters:
+  # Disable-all + explicit enables — future-proof against adding linters.
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - goconst
+    - misspell
+    - unconvert
+    - unparam
+  settings:
+    goconst:
+      min-len: 5
+      min-occurrences: 3
+    misspell:
+      locale: US
+  exclusions:
+    rules:
+      # Examples are small CLI programs — don't demand production-grade
+      # err-check on throwaway code paths.
+      - path: cmd/example-.*/main.go
+        linters:
+          - errcheck
+          - unparam
+      - path: cmd/poc-.*/main.go
+        linters:
+          - errcheck
+          - unparam
+      # The CLI's table printer writes to stdout; checking every Fprintf
+      # is noisy for no real benefit.
+      - path: cmd/sckit/common.go
+        linters:
+          - errcheck
+      - path: cmd/stability-test/main.go
+        linters:
+          - errcheck
+      # Unit tests allow "_ = x" idioms.
+      - path: _test\.go
+        linters:
+          - unparam
+          - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

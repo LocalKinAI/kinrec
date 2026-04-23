@@ -1,0 +1,23 @@
+# internal/dylib/libkinrec_writer.dylib IS committed (enables go install
+# without a C toolchain on the downstream side). Root-level build
+# artifacts are ignored.
+/kinrec
+/libkinrec_writer.dylib
+*.dylib.dSYM/
+
+# Go
+/vendor/
+*.test
+*.out
+coverage.txt
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Recorded clips shouldn't land in the repo.
+*.mp4
+*.mov
