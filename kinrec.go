@@ -47,7 +47,7 @@ import (
 )
 
 // Version is the semver tag for this build. Updated per release.
-const Version = "0.1.0-dev"
+const Version = "0.1.0"
 
 // DylibPath optionally overrides the embedded dylib. Leave empty
 // (default) to use the bundled copy auto-extracted to the user cache.

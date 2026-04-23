@@ -250,7 +250,8 @@ If none of the three applies, the feature waits.
 
 ## One-Line Log
 
-- **2026-04-22** — v0.1.0-dev shipped private. ROADMAP captured.
+- **2026-04-22** — v0.1.0-dev shipped to a private repo for overnight dogfood. ROADMAP captured.
+- **2026-04-23** — Public release: repo flipped to public, v0.1.0 tagged.
 - **2026-04-22 (late)** — `--shorts` preset + `--click-highlight` overlay
   shipped as late additions to v0.1. Motivation: user had immediate
   demo-recording needs; shipped by compositing onto CVPixelBuffer via

@@ -5,9 +5,15 @@ All notable changes to kinrec are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-04-23
 
-*Targeting the v0.1.0 tag.*
+Initial public release. Pure-Go macOS screen + audio recorder built
+on top of [sckit-go](https://github.com/LocalKinAI/sckit-go).
+Four audio modes (none / system / mic / mixed), hardware H.264 /
+HEVC encoding via VideoToolbox, MP4 + MOV containers, `--shorts`
+preset for X / TikTok / YT Shorts / Reels publishing, and
+`--click-highlight` cursor overlay for UI demos. Single binary,
+`go install`, no cgo.
 
 ### Added
 
