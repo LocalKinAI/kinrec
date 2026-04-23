@@ -375,6 +375,13 @@ static void kinrec_copy_str(const char* s, char* out, int cap) {
 @property (nonatomic, strong) AVCaptureSession* micSession;
 @property (nonatomic, strong) KRAudioMixer* mixer;  // non-nil only when mixing sys+mic
 
+// Cursor highlight state (only populated when wantsCursorHighlight).
+@property (nonatomic, assign) BOOL wantsCursorHighlight;
+@property (nonatomic, assign) CFTimeInterval lastClickTime;  // CACurrentMediaTime when left button went down
+@property (nonatomic, assign) BOOL lastLeftDown;              // previous poll's button state
+@property (nonatomic, assign) CGFloat displayPointsWidth;    // display size in points, for screen→pixel mapping
+@property (nonatomic, assign) CGFloat displayPointsHeight;
+
 @property (nonatomic, assign) BOOL sessionStarted;
 @property (nonatomic, assign) BOOL stopRequested;
 @property (nonatomic, assign) int32_t width;
@@ -587,7 +594,14 @@ static void kinrec_copy_str(const char* s, char* out, int cap) {
 
     if (type == SCStreamOutputTypeScreen) {
         if (self.videoInput.readyForMoreMediaData) {
-            [self.videoInput appendSampleBuffer:sampleBuffer];
+            CMSampleBufferRef toAppend = sampleBuffer;
+            CMSampleBufferRef overlay = NULL;
+            if (self.wantsCursorHighlight) {
+                overlay = [self sampleBufferWithCursorHighlight:sampleBuffer];
+                if (overlay) toAppend = overlay;
+            }
+            [self.videoInput appendSampleBuffer:toAppend];
+            if (overlay) CFRelease(overlay);
             self.frameCount++;
         }
     } else if (type == SCStreamOutputTypeAudio && self.audioInput && self.wantsSystemAudio) {
@@ -608,6 +622,135 @@ static void kinrec_copy_str(const char* s, char* out, int cap) {
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
     // Intentionally empty — we stop via our own stopWithCompletion.
     (void)stream; (void)error;
+}
+
+// ─── Cursor highlight overlay ────────────────────────────────
+//
+// Given an incoming video CMSampleBuffer, poll the current mouse
+// position + left-button state, composite a subtle always-on ring at
+// the cursor location and an expanding click ripple for ~300 ms after
+// a leading edge press, and return a NEW CMSampleBuffer wrapping a
+// freshly-allocated CVPixelBuffer with the overlay baked in.
+//
+// No Accessibility permission needed — uses NSEvent.mouseLocation and
+// CGEventSourceButtonState, both of which work without the TCC prompt.
+//
+// Only supports Display-target capture at native resolution. Window
+// and region captures, or captures with --resolution scaling, may
+// produce misaligned overlays until coordinate mapping is generalized.
+- (CMSampleBufferRef)sampleBufferWithCursorHighlight:(CMSampleBufferRef)input {
+    CVImageBufferRef inPix = CMSampleBufferGetImageBuffer(input);
+    if (!inPix) return NULL;
+
+    size_t w   = CVPixelBufferGetWidth(inPix);
+    size_t h   = CVPixelBufferGetHeight(inPix);
+
+    // Poll mouse state *at frame time* — good enough for a 60fps overlay.
+    CGPoint screenPt = NSEvent.mouseLocation;  // origin bottom-left of primary screen, points
+    BOOL leftDown = CGEventSourceButtonState(kCGEventSourceStateHIDSystemState,
+                                             kCGMouseButtonLeft);
+    // Detect click leading edge.
+    if (leftDown && !self.lastLeftDown) {
+        self.lastClickTime = CFAbsoluteTimeGetCurrent();
+    }
+    self.lastLeftDown = leftDown;
+
+    // Convert screen-points to output-pixel coordinates.
+    // Display native: scale by (output_pixels / display_points).
+    CGFloat sx = (self.displayPointsWidth  > 0) ? (CGFloat)w / self.displayPointsWidth  : 1.0;
+    CGFloat sy = (self.displayPointsHeight > 0) ? (CGFloat)h / self.displayPointsHeight : 1.0;
+    CGFloat mx = screenPt.x * sx;
+    // Flip Y: screen coords origin bottom-left → pixel coords origin top-left.
+    CGFloat my = (self.displayPointsHeight - screenPt.y) * sy;
+    // For CGBitmapContext with default (flipped) coordinate system,
+    // the y-axis actually points UP from bottom-left, so map back:
+    CGFloat drawY = (CGFloat)h - my;
+
+    // Allocate output CVPixelBuffer (same size, BGRA).
+    CVPixelBufferRef outPix = NULL;
+    NSDictionary* attrs = @{
+        (id)kCVPixelBufferIOSurfacePropertiesKey: @{},
+    };
+    CVReturn cvRet = CVPixelBufferCreate(kCFAllocatorDefault,
+                                         w, h, kCVPixelFormatType_32BGRA,
+                                         (__bridge CFDictionaryRef)attrs,
+                                         &outPix);
+    if (cvRet != kCVReturnSuccess || !outPix) return NULL;
+
+    // Copy input pixels into output, then draw overlay onto output.
+    CVPixelBufferLockBaseAddress(inPix,  kCVPixelBufferLock_ReadOnly);
+    CVPixelBufferLockBaseAddress(outPix, 0);
+
+    size_t inBPR  = CVPixelBufferGetBytesPerRow(inPix);
+    size_t outBPR = CVPixelBufferGetBytesPerRow(outPix);
+    uint8_t* inBase  = (uint8_t*)CVPixelBufferGetBaseAddress(inPix);
+    uint8_t* outBase = (uint8_t*)CVPixelBufferGetBaseAddress(outPix);
+    size_t rowBytes = MIN(inBPR, outBPR);
+    for (size_t row = 0; row < h; row++) {
+        memcpy(outBase + row * outBPR, inBase + row * inBPR, rowBytes);
+    }
+
+    // Draw overlay via CGBitmapContext on outPix pixels.
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(outBase, w, h, 8, outBPR, cs,
+        kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGColorSpaceRelease(cs);
+
+    if (ctx) {
+        // Always-on small ring around cursor: white 40% alpha, 2px stroke.
+        CGContextSetRGBStrokeColor(ctx, 1.0, 1.0, 1.0, 0.4);
+        CGContextSetLineWidth(ctx, 2.0);
+        const CGFloat ringR = 18.0;
+        CGContextStrokeEllipseInRect(ctx,
+            CGRectMake(mx - ringR, drawY - ringR, ringR*2, ringR*2));
+
+        // Click ripple: 3 concentric expanding rings, yellow, fading.
+        CFTimeInterval elapsed = CFAbsoluteTimeGetCurrent() - self.lastClickTime;
+        const CFTimeInterval rippleDur = 0.35;
+        if (elapsed >= 0 && elapsed < rippleDur) {
+            CGFloat t = elapsed / rippleDur;   // 0 → 1
+            // Ease-out expansion: r = base + (1 - (1-t)^2) * span
+            CGFloat eased = 1.0 - (1.0 - t) * (1.0 - t);
+            CGFloat baseR = 20.0 + eased * 60.0;   // 20 → 80 px
+            CGFloat alpha = 1.0 - t;                // 1 → 0
+            CGContextSetRGBStrokeColor(ctx, 1.0, 0.84, 0.2, alpha);   // amber
+            CGContextSetLineWidth(ctx, 3.5);
+            CGContextStrokeEllipseInRect(ctx,
+                CGRectMake(mx - baseR, drawY - baseR, baseR*2, baseR*2));
+            // Second trailing ring, 120ms behind.
+            CFTimeInterval elapsed2 = elapsed - 0.08;
+            if (elapsed2 > 0 && elapsed2 < rippleDur) {
+                CGFloat t2 = elapsed2 / rippleDur;
+                CGFloat e2 = 1.0 - (1.0 - t2) * (1.0 - t2);
+                CGFloat r2 = 20.0 + e2 * 60.0;
+                CGFloat a2 = 0.6 * (1.0 - t2);
+                CGContextSetRGBStrokeColor(ctx, 1.0, 0.84, 0.2, a2);
+                CGContextSetLineWidth(ctx, 2.0);
+                CGContextStrokeEllipseInRect(ctx,
+                    CGRectMake(mx - r2, drawY - r2, r2*2, r2*2));
+            }
+        }
+        CGContextRelease(ctx);
+    }
+
+    CVPixelBufferUnlockBaseAddress(outPix, 0);
+    CVPixelBufferUnlockBaseAddress(inPix,  kCVPixelBufferLock_ReadOnly);
+
+    // Wrap outPix into a new CMSampleBuffer, preserving input timing.
+    CMSampleTimingInfo timing;
+    CMSampleBufferGetSampleTimingInfo(input, 0, &timing);
+
+    CMVideoFormatDescriptionRef fmtDesc = NULL;
+    CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, outPix, &fmtDesc);
+
+    CMSampleBufferRef outSB = NULL;
+    OSStatus st = CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault,
+                                                           outPix, fmtDesc, &timing,
+                                                           &outSB);
+    if (fmtDesc) CFRelease(fmtDesc);
+    CVPixelBufferRelease(outPix);
+    if (st != 0) return NULL;
+    return outSB;   // caller retains nothing extra; they call CFRelease
 }
 
 - (void)stopWithCompletion:(void (^)(NSError* err))completion {
@@ -648,17 +791,40 @@ typedef struct {
 //
 // container: 0=mp4, 1=mov
 // codec:     0=h264, 1=hevc
+// Packed parameter struct (48 bytes, naturally aligned) — routes the
+// create call through a single pointer to stay under purego's reflect
+// ABI arg-count limit. Layout mirrored on the Go side; any change
+// requires updating both.
+typedef struct {
+    int32_t  width;           // 0
+    int32_t  height;          // 4
+    int32_t  fps;             // 8
+    int32_t  capture_audio;   // 12
+    int32_t  capture_mic;     // 16
+    int32_t  codec;           // 20
+    int32_t  container;       // 24
+    int32_t  cursor_highlight;// 28
+    const char* mic_device_id;// 32
+    const char* output_path;  // 40
+} kinrec_params_t;  // 48 bytes
+
 void* kinrec_create(uint32_t display_id,
-                    int32_t  width,
-                    int32_t  height,
-                    int32_t  fps,
-                    int32_t  capture_audio,
-                    int32_t  capture_mic,
-                    const char* mic_device_id,
-                    int32_t  codec,
-                    int32_t  container,
-                    const char* output_path,
+                    const kinrec_params_t* params,
                     char* err_msg, int err_len) {
+    if (!params) {
+        kinrec_copy_str("params required", err_msg, err_len);
+        return NULL;
+    }
+    int32_t  width = params->width;
+    int32_t  height = params->height;
+    int32_t  fps = params->fps;
+    int32_t  capture_audio = params->capture_audio;
+    int32_t  capture_mic = params->capture_mic;
+    const char* mic_device_id = params->mic_device_id;
+    int32_t  codec = params->codec;
+    int32_t  container = params->container;
+    int32_t  cursor_highlight = params->cursor_highlight;
+    const char* output_path = params->output_path;
     kinrec_ensure_cg_init();
     if (!output_path || !*output_path) {
         kinrec_copy_str("output_path required", err_msg, err_len);
@@ -697,6 +863,11 @@ void* kinrec_create(uint32_t display_id,
     rec.fps = f;
     rec.wantsSystemAudio = (capture_audio != 0);
     rec.wantsMic = (capture_mic != 0);
+    rec.wantsCursorHighlight = (cursor_highlight != 0);
+    // Capture display geometry for coordinate mapping in overlay.
+    rec.displayPointsWidth  = (CGFloat)targetDisplay.frame.size.width;
+    rec.displayPointsHeight = (CGFloat)targetDisplay.frame.size.height;
+    rec.lastClickTime = -1000.0;   // well in the past, no ripple at start
 
     NSError* setupErr = nil;
     AVFileType fileType = (container == 1) ? AVFileTypeQuickTimeMovie : AVFileTypeMPEG4;

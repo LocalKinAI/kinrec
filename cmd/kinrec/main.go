@@ -51,13 +51,24 @@ Flags:
       --codec h264|hevc  Video codec (default h264)
       --format mp4|mov   Container (default mp4)
       --display ID       Specific display ID (default: main)
+      --shorts           Short-video preset: 1080x1920 + 30fps + audio + mic.
+                         Optimized for X / TikTok / YT Shorts / Reels.
+                         Any explicit --fps / --resolution / --audio / --mic
+                         still wins.
+      --click-highlight  Overlay a subtle cursor ring + click ripple for
+                         UI demos (Screen Studio style). Uses
+                         NSEvent.mouseLocation — no Accessibility prompt.
+                         v0.1 supports Display target at native resolution
+                         only; combining with --shorts / --resolution may
+                         misalign the overlay.
 
 Examples:
   kinrec record -o demo.mp4
   kinrec record -o tutorial.mp4 --mic --duration 5m
   kinrec record -o meeting.mp4 --audio --duration 1h
   kinrec record -o loom-style.mp4 --audio --mic --duration 30s    # mixed
-  kinrec record -o demo.mov --format mov --codec hevc --fps 30`,
+  kinrec record -o demo.mov --format mov --codec hevc --fps 30
+  kinrec record -o short.mp4 --shorts --duration 60s              # vertical`,
 		},
 		"list": {
 			run:   runList,

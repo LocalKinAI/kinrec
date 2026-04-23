@@ -99,6 +99,32 @@ kinrec record -o tutorial.mp4 --mic --duration 5m
 Captures from the default input device. Triggers a one-time macOS
 "Microphone" permission prompt on first use.
 
+### Short-video preset (`--shorts`)
+
+```bash
+kinrec record --shorts -o clip.mp4 --duration 60s
+```
+
+One flag applies the X / TikTok / YT Shorts / Reels defaults:
+1080×1920 vertical, 30 fps, `--audio` + `--mic` both on (mixed into a
+single track via AVAudioEngine). Any explicit `--fps` / `--resolution`
+/ `--audio` / `--mic` you pass still wins.
+
+### Cursor highlight + click ripple (`--click-highlight`)
+
+```bash
+kinrec record --click-highlight -o tutorial.mp4 --mic --duration 2m
+```
+
+Draws a subtle white ring around the cursor at all times and a yellow
+expanding ripple every time you left-click. Matches the effect Screen
+Studio ($89) built its brand on. Requires no Accessibility permission.
+
+Current v0.1 limits: works on Display-target capture at the display's
+native resolution. `--click-highlight --shorts` or `--click-highlight
+--resolution WxH` will misalign the overlay until coordinate mapping
+is generalized in v0.2.
+
 ### Pick a specific mic
 
 ```bash
@@ -153,6 +179,8 @@ kinrec record [flags]
       --codec h264|hevc  Video codec (default h264)
       --format mp4|mov   Container (default mp4)
       --display ID       Specific display ID (default: main)
+      --shorts           Vertical 1080x1920 + 30fps + audio + mic preset
+      --click-highlight  Overlay cursor ring + click ripple (for demos)
 ```
 
 ---

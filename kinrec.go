@@ -87,13 +87,29 @@ var ErrAlreadyStarted = errors.New("kinrec: recorder already started")
 // ErrNotStarted is returned when Stop is called before Start.
 var ErrNotStarted = errors.New("kinrec: recorder not started")
 
+// createParams mirrors the ObjC kinrec_params_t struct exactly.
+// 48 bytes, naturally aligned. DO NOT reorder fields without also
+// updating objc/kinrec_writer.m.
+type createParams struct {
+	Width           int32
+	Height          int32
+	FPS             int32
+	CaptureAudio    int32
+	CaptureMic      int32
+	Codec           int32
+	Container       int32
+	CursorHighlight int32
+	MicDeviceID     unsafe.Pointer
+	OutputPath      unsafe.Pointer
+}
+
 // ─── Dylib resolution + function pointers ───────────────────
 
 var (
 	loadOnce sync.Once
 	loadErr  error
 
-	createFn       func(uint32, int32, int32, int32, int32, int32, unsafe.Pointer, int32, int32, unsafe.Pointer, unsafe.Pointer, int32) uintptr
+	createFn       func(uint32, unsafe.Pointer, unsafe.Pointer, int32) uintptr
 	startFn        func(uintptr, unsafe.Pointer, int32) int32
 	stopFn         func(uintptr, unsafe.Pointer, int32) int32
 	statsFn        func(uintptr, unsafe.Pointer, unsafe.Pointer)
@@ -319,29 +335,38 @@ func NewRecorder(ctx context.Context, opts ...Option) (*Recorder, error) {
 
 	// Null-terminate strings for the C side.
 	pathBytes := append([]byte(cfg.output), 0)
-	// Mic device ID is optional; C side checks for an empty first byte.
-	var micIDPtr unsafe.Pointer
 	var micIDBytes []byte
 	if cfg.micDeviceID != "" {
 		micIDBytes = append([]byte(cfg.micDeviceID), 0)
-		micIDPtr = unsafe.Pointer(&micIDBytes[0])
 	} else {
-		empty := []byte{0}
-		micIDPtr = unsafe.Pointer(&empty[0])
+		micIDBytes = []byte{0}
 	}
-	_ = micIDBytes // keep alive across dylib call
 	errBuf := make([]byte, 256)
+
+	// Pack params into a single struct — purego's reflect-based ABI
+	// struggles with function signatures beyond ~12 args on some Go
+	// versions. Packing mirrors the kinrec_params_t layout in
+	// objc/kinrec_writer.m (48 bytes, naturally aligned).
+	params := createParams{
+		Width:           int32(cfg.width),
+		Height:          int32(cfg.height),
+		FPS:             int32(cfg.fps),
+		CaptureAudio:    boolI(cfg.captureAudio),
+		CaptureMic:      boolI(cfg.captureMic),
+		Codec:           int32(cfg.codec),
+		Container:       int32(cfg.container),
+		CursorHighlight: boolI(cfg.cursorHighlight),
+		MicDeviceID:     unsafe.Pointer(&micIDBytes[0]),
+		OutputPath:      unsafe.Pointer(&pathBytes[0]),
+	}
+	// Keep pathBytes + micIDBytes alive across the dylib call — Go's
+	// GC won't move them while they're referenced from the stack.
+	_ = pathBytes
+	_ = micIDBytes
 
 	h := createFn(
 		cfg.displayID,
-		int32(cfg.width), int32(cfg.height),
-		int32(cfg.fps),
-		boolI(cfg.captureAudio),
-		boolI(cfg.captureMic),
-		micIDPtr,
-		int32(cfg.codec),
-		int32(cfg.container),
-		unsafe.Pointer(&pathBytes[0]),
+		unsafe.Pointer(&params),
 		unsafe.Pointer(&errBuf[0]), int32(len(errBuf)),
 	)
 	if h == 0 {

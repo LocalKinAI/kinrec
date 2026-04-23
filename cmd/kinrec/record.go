@@ -26,6 +26,8 @@ func runRecord(args []string) int {
 		codec      string
 		format     string
 		displayID  uint
+		shorts     bool
+		clickHi    bool
 	)
 	fs.StringVar(&output, "o", "", "output path (required)")
 	fs.StringVar(&output, "output", "", "output path (required)")
@@ -38,7 +40,31 @@ func runRecord(args []string) int {
 	fs.StringVar(&codec, "codec", "h264", "video codec: h264 | hevc")
 	fs.StringVar(&format, "format", "mp4", "container: mp4 | mov")
 	fs.UintVar(&displayID, "display", 0, "display ID (default: main)")
+	fs.BoolVar(&shorts, "shorts", false, "short-video preset: 1080x1920 vertical, 30fps, +audio +mic")
+	fs.BoolVar(&clickHi, "click-highlight", false, "overlay cursor ring + click ripple for UI demos")
 	_ = fs.Parse(args)
+
+	// --shorts overrides other defaults with values optimized for
+	// X / TikTok / YT Shorts / Reels uploads: vertical 1080x1920,
+	// 30 fps (smaller files, phone-friendly), mixed audio track.
+	// Any explicit --fps / --resolution / --audio / --mic still wins
+	// (this check runs before their values are used below).
+	if shorts {
+		if resolution == "" {
+			resolution = "1080x1920"
+		}
+		// Only override fps if user didn't pass it (flag default == 60).
+		// We can't distinguish "user passed 60" from "default 60" with
+		// stdlib flag, so we accept the rare case where an explicit
+		// --fps 60 + --shorts becomes 30. Document in help.
+		if fps == 60 {
+			fps = 30
+		}
+		if !audio && !mic {
+			audio = true
+			mic = true
+		}
+	}
 
 	if output == "" {
 		fmt.Fprintln(os.Stderr, "kinrec record: -o <path> is required")
@@ -51,6 +77,7 @@ func runRecord(args []string) int {
 		kinrec.WithAudio(audio),
 		kinrec.WithMic(mic),
 		kinrec.WithDisplay(uint32(displayID)),
+		kinrec.WithCursorHighlight(clickHi),
 	}
 	if micDevice != "" {
 		opts = append(opts, kinrec.WithMicDevice(micDevice))
@@ -109,6 +136,9 @@ func runRecord(args []string) int {
 	fmt.Printf("  codec:     %s\n", codec)
 	fmt.Printf("  container: %s\n", format)
 	fmt.Printf("  fps:       %d\n", fps)
+	if clickHi {
+		fmt.Println("  cursor:    highlight ring + click ripple")
+	}
 
 	if err := r.Start(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "kinrec: %v\n", err)

@@ -133,6 +133,21 @@ func TestOptionsComposition(t *testing.T) {
 	}
 }
 
+func TestWithCursorHighlight(t *testing.T) {
+	c := defaultConfig()
+	if c.cursorHighlight {
+		t.Error("cursorHighlight should default to false")
+	}
+	WithCursorHighlight(true)(&c)
+	if !c.cursorHighlight {
+		t.Error("WithCursorHighlight(true) did not take effect")
+	}
+	WithCursorHighlight(false)(&c)
+	if c.cursorHighlight {
+		t.Error("WithCursorHighlight(false) did not toggle off")
+	}
+}
+
 func TestOptionsAllInteract(t *testing.T) {
 	c := defaultConfig()
 	opts := []Option{

@@ -5,16 +5,17 @@ package kinrec
 type Option func(*config)
 
 type config struct {
-	output       string
-	displayID    uint32 // 0 = auto-pick
-	width        int    // 0 = display native
-	height       int    // 0 = display native
-	fps          int    // 0 = 60
-	captureAudio bool
-	captureMic   bool
-	micDeviceID  string // empty = default input
-	codec        Codec
-	container    Container
+	output          string
+	displayID       uint32 // 0 = auto-pick
+	width           int    // 0 = display native
+	height          int    // 0 = display native
+	fps             int    // 0 = 60
+	captureAudio    bool
+	captureMic      bool
+	micDeviceID     string // empty = default input
+	codec           Codec
+	container       Container
+	cursorHighlight bool
 }
 
 func defaultConfig() config {
@@ -97,4 +98,22 @@ func WithCodec(codec Codec) Option {
 // WithContainer selects the output file format. Default: [ContainerMP4].
 func WithContainer(container Container) Option {
 	return func(c *config) { c.container = container }
+}
+
+// WithCursorHighlight overlays a subtle ring around the cursor and a
+// yellow expanding "ripple" on every left-button click, making mouse
+// activity unmistakable in screen recordings. Useful for tutorials and
+// UI demos.
+//
+// Currently supports Display-target capture at the display's native
+// resolution. Window / App / Region targets and --resolution scaling
+// will misalign the overlay until coordinate mapping is generalized
+// in a future release.
+//
+// Does NOT require Accessibility permission: uses NSEvent.mouseLocation
+// and CGEventSourceButtonState.
+//
+// Default: false.
+func WithCursorHighlight(enabled bool) Option {
+	return func(c *config) { c.cursorHighlight = enabled }
 }

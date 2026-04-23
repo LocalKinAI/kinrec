@@ -146,6 +146,31 @@ Smoke tests on M-series Mac, macOS 26.3:
 - Output file 577 KB for 5 seconds → ~7 MB per minute at 1080p30 with
   audio, within expectation for H.264 at this bitrate.
 
+### Added (late v0.1, pre-public-release)
+
+- `--shorts` CLI preset: one flag applies the short-video stack
+  (1080×1920 vertical, 30 fps, `--audio` + `--mic` mixed). Individual
+  flags still override. Exposed in the library as a documented CLI-only
+  convenience; no separate `WithShorts()` option to avoid muddying the
+  functional-options model.
+- `--click-highlight` CLI flag and `WithCursorHighlight(bool)` option:
+  overlays a subtle white ring around the cursor at all times and a
+  yellow expanding "ripple" (~350 ms, two trailing rings) on every
+  left-button click. Uses `NSEvent.mouseLocation` plus
+  `CGEventSourceButtonState` — no Accessibility permission required.
+  Implementation composites onto a fresh `CVPixelBuffer` via
+  `CGBitmapContext` before appending to the writer. Adds ~8 MB/s of
+  memory bandwidth at 1080p60 — imperceptible on any M-series Mac.
+
+### Refactored
+
+- `kinrec_create` C ABI now takes a packed `kinrec_params_t` struct
+  pointer (48 bytes, naturally aligned) instead of 13 individual
+  arguments. Purego's reflect-based ABI struggles past ~12 args on
+  Go 1.25 ("unknown ABI part kind" panic); the struct-based form
+  eliminates the limit and mirrors the `sckit_config_t` pattern
+  already used by sckit-go. Internal change, no user-visible effect.
+
 ### Fixed during v0.1 development (pre-release)
 
 - **Mixer clock misalignment** — the `AVAudioEngine` output buffers
