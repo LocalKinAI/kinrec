@@ -254,7 +254,7 @@ Stream #1: Audio: aac (LC), 48000 Hz, stereo, 128 kb/s
 
 ## Roadmap
 
-### v0.1.0 — Ship it (this week)
+### v0.1.0 — Recorder foundation (shipped 2026-04-23)
 - [x] Display recording with system audio
 - [x] Microphone recording (default input + device-selectable)
 - [x] **`--audio --mic` mixed via `AVAudioEngine` into a single track**
@@ -263,8 +263,9 @@ Stream #1: Audio: aac (LC), 48000 Hz, stereo, 128 kb/s
 - [x] Duration timer + Ctrl+C stop + live frame/audio-buffer counters
 - [x] Hardware encoding via VideoToolbox
 - [x] `//go:embed` universal dylib
-- [x] README + CHANGELOG polished
-- [ ] v0.1.0 GitHub release
+- [x] `--shorts` preset for X / TikTok / YT Shorts / Reels publishing
+- [x] `--click-highlight` cursor overlay for UI demos
+- [x] v0.1.0 GitHub release
 
 ### v0.2.0 — Quality of life
 - [ ] Window / app / region recording (via sckit-go target pass-through)
