@@ -12,10 +12,9 @@
     { nixpkgs, systems, ... }:
     let
       inherit (nixpkgs) lib;
-      forSystems = list: f: lib.genAttrs list (system: f nixpkgs.legacyPackages.${system});
-      forAllSystems = forSystems (import systems);
-      # kinrec is built on ScreenCaptureKit: the binary exists only for macOS.
-      forDarwinSystems = forSystems (lib.filter (lib.hasSuffix "-darwin") (import systems));
+      # kinrec is built on ScreenCaptureKit, so only the macOS systems apply.
+      darwinSystems = lib.filter (lib.hasSuffix "-darwin") (import systems);
+      forDarwinSystems = f: lib.genAttrs darwinSystems (system: f nixpkgs.legacyPackages.${system});
     in
     {
       # `nix build`, or `nix run . -- record -o x.mp4 --audio`.
@@ -53,7 +52,7 @@
 
       # `nix develop`: Go plus the linters `make lint` looks for. No C compiler,
       # so `make dylib` keeps using Apple's clang for the universal dylib.
-      devShells = forAllSystems (pkgs: {
+      devShells = forDarwinSystems (pkgs: {
         default = pkgs.mkShellNoCC {
           packages = with pkgs; [
             go
@@ -66,6 +65,6 @@
       });
 
       # `nix fmt`
-      formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
+      formatter = forDarwinSystems (pkgs: pkgs.nixfmt-tree);
     };
 }
