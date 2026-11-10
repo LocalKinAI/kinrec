@@ -11,6 +11,9 @@
 *.out
 coverage.txt
 
+# Nix build output (`nix build`)
+/result
+
 # Editor / OS
 .DS_Store
 .idea/
