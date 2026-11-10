@@ -31,10 +31,9 @@
           vendorHash = "sha256-NHqM86PCwqdFATtjhh38RZVrERj3iiF7HqBWcq4kOZw=";
           subPackages = [ "cmd/kinrec" ];
 
-          # Compile the ObjC dylib over the committed prebuilt one (-B: nix
-          # resets mtimes, so make would call it up to date), for this
-          # architecture only.
-          nativeBuildInputs = [ pkgs.file ]; # the Makefile runs `file` on it
+          # Compile the ObjC dylib over the committed prebuilt one, for this
+          # architecture only. -B because nix resets mtimes, so make would
+          # call the committed one up to date.
           preBuild = "make -B dylib ARCHES=${pkgs.stdenv.hostPlatform.darwinArch}";
           # Load it from the store instead of extracting the embedded copy to
           # ~/Library/Caches/kinrec at runtime.
@@ -42,9 +41,6 @@
           ldflags = [
             "-X github.com/LocalKinAI/kinrec.DylibPath=${placeholder "out"}/lib/libkinrec_writer.dylib"
           ];
-
-          # The tests record the real screen, which the build sandbox cannot.
-          doCheck = false;
 
           meta = {
             description = "macOS screen + system audio + microphone recorder CLI";
@@ -56,7 +52,7 @@
       });
 
       # `nix develop`: Go plus the linters `make lint` looks for. No C compiler,
-      # so `make dylib` keeps using Xcode's clang for the universal dylib.
+      # so `make dylib` keeps using Apple's clang for the universal dylib.
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShellNoCC {
           packages = with pkgs; [
